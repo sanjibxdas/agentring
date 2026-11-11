@@ -50,6 +50,9 @@ class Provider:
         if self.name == "local":
             from .openai_realtime import LocalRealtime
             return LocalRealtime
+        if self.name == "deepgram":
+            from .deepgram import DeepgramVoice
+            return DeepgramVoice
         from .phonic import Phonic
         return Phonic
 
@@ -59,6 +62,8 @@ PROVIDERS = {p.name: p for p in (
     Provider("openai", "OpenAI Realtime", "OPENAI_API_KEY", "gpt-realtime-2.1", "marin"),
     Provider("grok", "Grok Voice", "XAI_API_KEY", "grok-voice-latest", None),
     Provider("phonic", "Phonic", "PHONIC_API_KEY", "phonic-1", None),
+    Provider("deepgram", "Deepgram Voice Agent", "DEEPGRAM_API_KEY", "flux-general-en", "flux-kit-en",
+             takes_language=False),
     Provider("local", "Local (OpenAI Realtime compatible)", "AGENTRING_VOICE_KEY", "local", None,
              takes_language=False, key_required=False, default_url="ws://127.0.0.1:8765/v1/realtime"),
 )}

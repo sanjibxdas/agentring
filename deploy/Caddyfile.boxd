@@ -1,0 +1,31 @@
+# Caddy for a boxd VM: TLS is terminated by the boxd proxy (relay.good-cliff.boxd.sh),
+# so Caddy speaks plain HTTP on 8000, which is the port the proxy forwards to.
+#
+#   boxd machine proxy new relay --port=8000   ->  relay.good-cliff.boxd.sh -> 8000
+#
+# The routes are the same as deploy/Caddyfile: /rtc* goes to LiveKit, everything else
+# to the relay, and LiveKit's admin API and webhook are never public.
+
+{
+	auto_https off
+	admin off
+}
+
+:8000 {
+	encode gzip
+	header Strict-Transport-Security "max-age=31536000"
+	header -Server
+	# LiveKit's admin API and the relay's webhook are internal only.
+	handle /twirp/* {
+		respond 404
+	}
+	handle /v1/livekit/webhook {
+		respond 404
+	}
+	handle /rtc* {
+		reverse_proxy livekit:7880
+	}
+	handle {
+		reverse_proxy relay:8080
+	}
+}

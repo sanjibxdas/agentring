@@ -1,5 +1,12 @@
 # agentring
 
+> **This repository** is a distribution of the upstream
+> [agentring](https://github.com/mutonby/agentring) (Apache-2.0, see [NOTICE](NOTICE))
+> with two additions: **Deepgram's Voice Agent API as a voice provider**
+> (`--provider deepgram`) and a **deployment for boxd VMs** — the relay, LiveKit and
+> the daemon on one boxd VM, no VPS with open UDP needed. Start with
+> **[docs/boxd.md](docs/boxd.md)**.
+
 **Your AI agent can call you.** When it needs a decision, hits a wall or finishes a
 long job, your phone rings like a real call, even locked and in Doze. A voice AI tells
 you what's going on, you talk it through, and the agent gets the transcript and carries

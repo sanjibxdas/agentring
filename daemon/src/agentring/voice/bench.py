@@ -32,7 +32,7 @@ from typing import Any
 
 import numpy as np
 
-from .backend import AudioOut, RealtimeBackend, ToolCalls, ToolResult, Transcript
+from .backend import AudioOut, Event, RealtimeBackend, ToolCalls, ToolResult, Transcript
 from .quick import DEFAULT_INSTRUCTIONS
 from .session import Prompts
 from .tools import Tool, ToolCall, result_text
@@ -212,13 +212,13 @@ async def run_session(backend: RealtimeBackend, scenario: str, pcm: bytes, *, ru
         finally:
             pending -= 1
 
+    early: list[Event] = []  # events that arrived while the user was still speaking
+
     async def recv() -> None:
         nonlocal last_event, pending, first_voice_at
-        async for ev in backend.events():
-            now = time.monotonic()
-            last_event = now
-            if t_end is None:
-                continue  # the user is still talking
+
+        async def handle(ev: Event, now: float) -> None:
+            nonlocal pending, first_voice_at
             if isinstance(ev, AudioOut):
                 s.audio += ev.pcm
                 if first_voice_at is None and voiced(ev.pcm):
@@ -233,6 +233,23 @@ async def run_session(backend: RealtimeBackend, scenario: str, pcm: bytes, *, ru
                 s.tools += [c.name for c in ev.calls]
                 pending += 1
                 asyncio.create_task(answer(ev.calls))
+
+        async for ev in backend.events():
+            now = time.monotonic()
+            last_event = now
+            if t_end is None:
+                # The user is still talking. A provider that calls a tool before the turn is
+                # confirmed (Deepgram does) must not lose the call: keep it and replay it once
+                # the prompt has finished. Audio is still dropped: it would not be an answer.
+                if isinstance(ev, (ToolCalls, Transcript)):
+                    early.append(ev)
+                continue
+            if early:
+                kept = list(early)  # a copy: `early` is cleared in place below
+                early.clear()
+                for e in kept:
+                    await handle(e, now)
+            await handle(ev, now)
 
     tasks = [asyncio.create_task(mic()), asyncio.create_task(recv())]
     try:

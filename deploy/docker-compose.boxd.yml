@@ -1,0 +1,114 @@
+# agentring on a boxd VM: relay + LiveKit + Caddy, behind the boxd HTTPS proxy.
+#
+#   cp .env.boxd.example .env.boxd && edit it
+#   docker compose -f docker-compose.boxd.yml --env-file .env.boxd up -d --build
+#
+# Differences from deploy/docker-compose.yml:
+#   - Caddy listens on 8000 (plain HTTP): the boxd proxy terminates TLS and forwards here.
+#   - The relay trusts one proxy (the boxd one) for X-Forwarded-For.
+#   - LiveKit's media ports are not published on the host: the boxd edge only forwards a
+#     handful of ports, so call audio goes over the exposed TCP port (see .env.boxd).
+#
+# The relay's public URL is the named proxy's address (relay.good-cliff.boxd.sh): a named
+# proxy is never challenged by boxd's bot protection, which a curl or an agent would trip.
+
+services:
+  relay:
+    build: ../relay
+    image: ${AGENTRING_RELAY_IMAGE:-agentring-relay:local}
+    restart: unless-stopped
+    depends_on:
+      livekit-init:
+        condition: service_completed_successfully
+    environment:
+      AGENTRING_PUBLIC_URL: https://${AGENTRING_DOMAIN:?set AGENTRING_DOMAIN in .env.boxd}
+      AGENTRING_AGENT_NAME: ${AGENTRING_AGENT_NAME:-Agent}
+      AGENTRING_API_KEY: ${AGENTRING_API_KEY:-}
+      AGENTRING_TRUSTED_PROXIES: "1"
+      # A phone that is asleep needs time to wake up: the default 30 s ring window was
+      # too short for a Xiaomi to surface the call, which left ~2 s to answer.
+      AGENTRING_RING_TIMEOUT_S: ${AGENTRING_RING_TIMEOUT_S:-180}
+      FCM_SERVICE_ACCOUNT_FILE: ${FCM_SERVICE_ACCOUNT_FILE:-}
+      FCM_GOOGLE_SERVICES_FILE: ${FCM_GOOGLE_SERVICES_FILE:-}
+      LIVEKIT_URL: wss://${AGENTRING_DOMAIN}
+      LIVEKIT_API_URL: http://livekit:7880
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-agentring}
+      LIVEKIT_API_SECRET_FILE: /livekit/livekit-api-secret
+    volumes:
+      - relay-data:/data
+      - ./secrets:/secrets:ro
+      - relay-livekit:/livekit:ro
+    expose:
+      - "8080"
+    read_only: true
+    tmpfs: [/tmp]
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 512m
+    pids_limit: 256
+
+  livekit:
+    image: livekit/livekit-server:v1.13.10@sha256:89ca9ce0791e18d6e03bf6e2c49ceb27e1c754eae8bd50c989386c1a5963791a
+    restart: unless-stopped
+    depends_on:
+      livekit-init:
+        condition: service_completed_successfully
+    command: ["--config", "/etc/livekit/livekit.yaml"]
+    environment:
+      NODE_IP: ${LIVEKIT_NODE_IP:-}
+    volumes:
+      - livekit-config:/etc/livekit:ro
+    expose:
+      - "7880"
+    # 52465 is the public port the boxd edge assigned (`boxd machine expose 7881 --tcp`
+    # gave edge:52465 -> VM:7881). LiveKit listens on it so that the ICE-TCP candidate it
+    # advertises is the port the edge really listens on; the host forwarder in
+    # agentring-livekit-forward.service bridges 7881 -> 52465.
+    ports:
+      - "52465:52465/tcp"
+      # LiveKit's own HTTP API (7880), for tooling on the host. The boxd edge does not
+      # forward it, so it is only reachable from this machine and the compose network.
+      - "127.0.0.1:7880:7880/tcp"
+    user: "65534:65534"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1g
+    pids_limit: 512
+
+  livekit-init:
+    image: caddy:2.11.6@sha256:3422ce6de165df66534f9b9ba50efaf457114ec961763cc52f5dbdaac2972d73
+    restart: "no"
+    entrypoint: ["/bin/sh", "/in/livekit-init.sh"]
+    environment:
+      LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-agentring}
+      LIVEKIT_NODE_IP: ${LIVEKIT_NODE_IP:-}
+    volumes:
+      - ./livekit-init.sh:/in/livekit-init.sh:ro
+      - ./livekit.boxd.yaml:/in/livekit.yaml:ro
+      - relay-livekit:/out/relay
+      - livekit-config:/out/livekit
+    network_mode: none
+    cap_drop: [ALL]
+    cap_add: [CHOWN, DAC_OVERRIDE, FOWNER]
+    security_opt: ["no-new-privileges:true"]
+
+  caddy:
+    image: caddy:2.11.6@sha256:3422ce6de165df66534f9b9ba50efaf457114ec961763cc52f5dbdaac2972d73
+    restart: unless-stopped
+    depends_on: [relay, livekit]
+    environment:
+      AGENTRING_DOMAIN: ${AGENTRING_DOMAIN}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./Caddyfile.boxd:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+
+volumes:
+  relay-data:
+  relay-livekit:
+  livekit-config:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,39 @@
+# LiveKit config for a boxd VM.
+#
+# The boxd edge only forwards a few ports, and it picks the public port itself. For ICE to
+# work, the port LiveKit advertises must be the port the edge listens on. The chain:
+#
+#   phone ──> edge 152.236.3.40:52465   (the public port boxd assigned)
+#         ──> VM host:7881               (socat-agentring-livekit, forwards to 52465)
+#         ──> VM host:52465              (docker publishes it)
+#         ──> livekit container:52465    (rtc.tcp_port below, what LiveKit advertises)
+#
+# So `rtc.tcp_port` is 52465, the public port, and a small forwarder on the host bridges
+# 7881 (where boxd delivers) to 52465 (where LiveKit listens).
+#
+# The UDP range is unreachable through boxd, so the client falls back to the TCP candidate.
+# Call audio over ICE-TCP works but connects more slowly than UDP. On a normal VPS with
+# UDP 50000-50100 and TCP 7881 open, use deploy/livekit.yaml instead: it is simpler and faster.
+
+port: 7880
+key_file: /etc/livekit/keys.yaml
+rtc:
+  tcp_port: 52465
+  node_ip: 152.236.3.40
+  port_range_start: 50000
+  port_range_end: 50002
+  use_external_ip: false
+room:
+  # One short-lived room per call; the relay creates it and deletes it when the call
+  # ends. A join token outlives its call by up to 120 s and must not bring the room back.
+  auto_create: false
+  empty_timeout: 30
+  departure_timeout: 10
+  max_participants: 4
+webhook:
+  # Must equal LIVEKIT_API_KEY (LiveKit does not expand env vars in this file).
+  api_key: REPLACE_WITH_LIVEKIT_API_KEY
+  urls:
+    - http://relay:8080/v1/livekit/webhook
+logging:
+  level: info

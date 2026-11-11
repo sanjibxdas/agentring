@@ -25,5 +25,7 @@ uv.lock.bak
 .env.*
 !.env.example
 !.env.local.example
+# The boxd deployment's example env is safe to publish; the real one stays ignored.
+!deploy/.env.boxd.example
 service-account*.json
 *-firebase-adminsdk-*.json

@@ -316,7 +316,7 @@ def test_resolve_voice_errors(home, monkeypatch):
         resolve_voice()
     with pytest.raises(VoiceConfigError, match="PHONIC_API_KEY"):
         resolve_voice("phonic")
-    with pytest.raises(VoiceConfigError, match="gemini, openai, grok, phonic, local"):
+    with pytest.raises(VoiceConfigError, match="gemini, openai, grok, phonic, deepgram, local"):
         resolve_voice("siri")
     monkeypatch.setenv("OPENAI_API_KEY", "o")
     c = resolve_voice("openai")

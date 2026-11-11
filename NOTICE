@@ -1,0 +1,31 @@
+agentring
+Copyright the agentring contributors
+
+This repository is a distribution of the agentring project
+(https://github.com/mutonby/agentring), which is licensed under the
+Apache License, Version 2.0. The full licence text is in LICENSE, and the
+upstream copyright notice is preserved there.
+
+Modifications made in this repository:
+
+  * Deepgram's Voice Agent API as a voice provider.
+    daemon/src/agentring/voice/deepgram.py adds a RealtimeBackend for
+    wss://agent.deepgram.com/v1/agent/converse, and
+    daemon/src/agentring/voice/providers.py registers it as `--provider deepgram`
+    (DEEPGRAM_API_KEY). It is a standalone backend, not an OpenAI-Realtime
+    subclass: Deepgram's protocol is its own (raw binary audio frames,
+    `Authorization: Token`, its own event names), though the tool schemas are
+    OpenAI Chat-Completions shaped and port over unchanged.
+
+  * A fix in the voice bench. daemon/src/agentring/voice/bench.py used to drop
+    every event that arrived while the spoken prompt was still playing, which
+    lost the tool calls of providers that dispatch a function call before the
+    user's turn is confirmed (Deepgram does; its docs recommend
+    `defer_until_eot` for exactly this). Those events are now buffered and
+    replayed once the prompt has finished.
+
+  * A deployment for boxd VMs. deploy/Caddyfile.boxd,
+    deploy/docker-compose.boxd.yml, deploy/livekit.boxd.yaml, deploy/setup.sh,
+    deploy/pair.sh and deploy/.env.boxd.example run the relay, LiveKit and the
+    daemon on a boxd VM, where the public HTTPS proxy and a single forwarded
+    TCP port stand in for a VPS with open UDP. See docs/boxd.md.
